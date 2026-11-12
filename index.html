@@ -110,6 +110,7 @@ const shuf=a=>a.map(v=>[Math.random(),v]).sort((x,y)=>x[0]-y[0]).map(v=>v[1]);
 const STOP=new Set(['music','and','the','world','other','general','new']);
 const fam=g=>[...new Set(g.split(/[\s\/&,\-]+/).filter(w=>w.length>2&&!STOP.has(w)))].slice(0,3);
 const script=s=>/[\u3040-\u30ff]/.test(s)?'ja':/[\uac00-\ud7af]/.test(s)?'ko':/[\u4e00-\u9fff]/.test(s)?'zh':/[\u0400-\u04ff]/.test(s)?'ru':/[\u0600-\u06ff]/.test(s)?'ar':/[\u0900-\u097f]/.test(s)?'hi':'la';
+const audRe=/h[öo]r(buch|bücher|buecher|spiel|bücher)|audio ?book|spoken|podcast|lesung|sprach|speech|storytelling|kinder(lieder|geschichten)?$/i,audName=/h[öo]rbuch|h[öo]rspiel|audio ?book|podcast/i;
 const junkRe=/karaoke|tribute|made famous|originally performed|lullaby|8-bit|cover version|piano version|in the style of|workout|ringtone/i;
 let LN=S.liked.slice(-80).map(l=>String(l[2]).toLowerCase()).filter(n=>n.length>3);
 /* older saves used capitalised genres and no genre families: convert them so imported taste still matches */
@@ -131,7 +132,7 @@ const blocked=t=>(cool['g:'+t.genre]||0)>S.n||t.fam.some(w=>(cool['f:'+w]||0)>S.
 /* songs that only mention a liked artist (tributes, covers) */
 const RX={},rx=n=>RX[n]||(RX[n]=new RegExp('(^|[^a-z0-9])'+n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'($|[^a-z0-9])'));
 const imposter=t=>{const s=(t.name+' '+t.artist).toLowerCase(),a=t.artist.toLowerCase();return LN.some(n=>n!==a&&!a.includes(n)&&!n.includes(a)&&rx(n).test(s))};
-const ok0=t=>!seen.has(t.id)&&!S.dalb.includes(t.cid)&&!neg(t)&&!junkRe.test(t.name+' '+t.artist)&&!imposter(t);
+const ok0=t=>!audRe.test(t.genre)&&!audName.test(t.name)&&!seen.has(t.id)&&!S.dalb.includes(t.cid)&&!neg(t)&&!junkRe.test(t.name+' '+t.artist)&&!imposter(t);
 const ok=t=>ok0(t)&&!blocked(t)&&!recAl.slice(0,8).includes(t.cid)&&!recent.slice(0,3).includes(t.aid);
 function learn(t,dir,frac){
   /* graded signal: a like after a full listen counts most, a skip in the first seconds is a firm no, a skip near the end is mild */
@@ -170,8 +171,8 @@ function take(x,lv){
   if(x)pX=pX.filter(p=>p!==t);else pE=pE.filter(p=>p!==t);
   return t;
 }
-const toT=r=>{const g=(r.primaryGenreName||'?').toLowerCase();return{id:r.trackId,cid:r.collectionId||r.trackId,name:r.trackName,artist:r.artistName,aid:r.artistId,genre:g,fam:g==='?'?[]:fam(g),dec:Math.floor(new Date(r.releaseDate).getFullYear()/10)*10||0,lang:script(r.trackName+r.artistName),art:(r.artworkUrl100||'').replace('100x100','450x450'),prev:r.previewUrl,url:(r.trackViewUrl||'').replace(/&uo=\d+/,''),src:r.trackViewUrl}};
-const dzT=(r,g)=>({id:-r.id,cid:-r.album.id,name:r.title,artist:r.artist.name,aid:-r.artist.id,genre:g,fam:g==='?'?[]:fam(g),dec:0,lang:script(r.title+r.artist.name),art:r.album.cover_big||r.album.cover_xl,prev:r.preview,url:'https://music.apple.com/search?term='+encodeURIComponent(r.title+' '+r.artist.name),src:'https://www.deezer.com/track/'+r.id});
+const toT=r=>{const g=(r.primaryGenreName||'?').toLowerCase();return{id:r.trackId,cid:r.collectionId||r.trackId,name:r.trackName,artist:r.artistName,aid:r.artistId,genre:g,fam:g==='?'?[]:fam(g),dec:Math.floor(new Date(r.releaseDate).getFullYear()/10)*10||0,lang:script(r.trackName+r.artistName),art:(r.artworkUrl100||'').replace('100x100','450x450'),lo:(r.artworkUrl100||'').replace('100x100','60x60'),prev:r.previewUrl,url:(r.trackViewUrl||'').replace(/&uo=\d+/,''),src:r.trackViewUrl}};
+const dzT=(r,g)=>({id:-r.id,cid:-r.album.id,name:r.title,artist:r.artist.name,aid:-r.artist.id,genre:g,fam:g==='?'?[]:fam(g),dec:0,lang:script(r.title+r.artist.name),art:r.album.cover_big||r.album.cover_xl,lo:r.album.cover_small||'',prev:r.preview,url:'https://music.apple.com/search?term='+encodeURIComponent(r.title+' '+r.artist.name),src:'https://www.deezer.com/track/'+r.id});
 /* JSONP avoids CORS problems */
 function jsonp(u){return new Promise(res=>{const cb='cb'+Math.random().toString(36).slice(2),s=document.createElement('script');
   const done=v=>{clearTimeout(to);delete window[cb];s.remove();res(v)},to=setTimeout(()=>done(null),5000);
@@ -303,13 +304,15 @@ function show(t){
   setTimeout(sync,60);
 }
 async function prep(s,t){
-  s.ready=false;s.t=t;s.cover.src=t.art;
+  s.ready=false;s.t=t;s.cover.src=t.lo||t.art;
   s.tName.textContent=t.name;s.tArtist.textContent=t.artist;
   const q=encodeURIComponent(t.name+' '+t.artist);
   s.lSp.href='https://open.spotify.com/search/'+q;s.lYt.href='https://music.youtube.com/search?q='+q;s.lAp.href=t.url;
-  s.pre=new Audio();s.pre.preload='auto';s.pre.src=t.prev;
   try{await s.cover.decode()}catch(e){}
   s.ready=true;
+  /* a tiny cover shows first so the card is ready almost at once; the sharp one replaces it when it arrives */
+  if(t.lo&&t.lo!==t.art){const im=new Image();im.src=t.art;im.decode().then(()=>{if(s.t===t)s.cover.src=t.art}).catch(()=>{})}
+  if(s.t===t){s.pre=new Audio();s.pre.preload='auto';s.pre.src=t.prev}
 }
 /* direct song links: ask Odesli for the exact Spotify / YouTube Music / Apple Music pages (search links stay as a fallback) */
 async function resolveLinks(s){
